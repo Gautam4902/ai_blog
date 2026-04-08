@@ -1,15 +1,3 @@
-"""
-AI Research Blog GTM Pipeline
-==============================
-Keeps the original LangGraph research + writing backend 100% intact.
-Adds:
-  - Daily topic list (AI research updates, last 7 days)
-  - Front-matter injection for Jekyll / GitHub Pages
-  - Git commit + push to <user>/github.io or any gh-pages branch
-  - APScheduler cron job (runs once per day at a configurable hour)
-  - CLI: `python blog_pipeline.py run` or `python blog_pipeline.py schedule`
-"""
-
 from __future__ import annotations
 
 import argparse
