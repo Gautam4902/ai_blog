@@ -16,9 +16,7 @@ from zoneinfo import ZoneInfo
 
 
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -26,9 +24,6 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Env / config
-# ---------------------------------------------------------------------------
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -55,9 +50,9 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from typing import TypedDict
 
 
-# ------------------------------------------------------------------
+
 # 1) structure
-# ------------------------------------------------------------------
+
 class Task(BaseModel):
     id: int
     title: str
@@ -107,9 +102,9 @@ class EvidencePack(BaseModel):
     evidence: List[EvidenceItem] = Field(default_factory=list)
 
 
-# ------------------------------------------------------------------
+
 # 2) State 
-# ------------------------------------------------------------------
+
 class State(TypedDict):
     topic: str
     mode: str
@@ -123,9 +118,8 @@ class State(TypedDict):
     final: str
 
 
-# ------------------------------------------------------------------
 # 3) LLM  
-# ------------------------------------------------------------------
+
 #llm = ChatOpenAI(model="gpt-4.1-mini") payment wale time
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
@@ -133,9 +127,9 @@ llm = ChatGroq(
 )  
 
 
-# ------------------------------------------------------------------
+
 # 4) Router  
-# ------------------------------------------------------------------
+
 ROUTER_SYSTEM = """You are a routing module for a technical blog planner.
 
 Decide whether web research is needed BEFORE planning.
@@ -213,9 +207,8 @@ def route_next(state: State) -> str:
         return "research"
     return "orchestrator"
 
-# ------------------------------------------------------------------
-# 5) Research (Tavily)  (try wo serpertool tool)
-# ------------------------------------------------------------------
+
+# 5) Research (Tavily)  (try wo serpertool tool which you used in marketing crew proj)
 def _tavily_search(query: str, max_results: int = 5) -> List[dict]:
     tool = TavilySearchResults(max_results=max_results)
     results = tool.invoke({"query": query})
@@ -290,7 +283,7 @@ def research_node(state: State) -> dict:
 
     text = response.content
 
-    # 🔥 simple parsing → EvidenceItem
+    
     evidence = []
     for line in text.split("\n"):
         if "http" in line:
@@ -307,9 +300,8 @@ def research_node(state: State) -> dict:
 
 
 
-# ------------------------------------------------------------------
-# 6) Orchestrator  (original, unchanged)
-# ------------------------------------------------------------------
+# 6) Orchestrator -planning
+
 ORCH_SYSTEM = """You are a senior technical writer and developer advocate.
 Your job is to produce a highly actionable outline for a technical blog post.
 
@@ -370,7 +362,7 @@ def orchestrator_node(state: State) -> dict:
         ]
     )
 
-    # 🔥 parse LLM output
+   
     text = response.content.replace("#", "").strip()
 
     sections = [
@@ -379,7 +371,6 @@ def orchestrator_node(state: State) -> dict:
         if len(s.strip()) > 5
     ]
 
-# 🔥 REMOVE DUPLICATES
     unique_sections = []
     for s in sections:
         if s not in unique_sections:
@@ -424,9 +415,9 @@ def orchestrator_node(state: State) -> dict:
 
     return {"plan": plan}  
 
-# ------------------------------------------------------------------
-# 7) Fanout  
-# ------------------------------------------------------------------
+
+# 7) Fanout  to be used when parellel working paid version
+
 def sequential_fanout(state: State):
     tasks = state["plan"].tasks
     return [
@@ -446,9 +437,9 @@ def sequential_fanout(state: State):
     ]
 
 
-# ------------------------------------------------------------------
+
 # 8) Worker 
-# ------------------------------------------------------------------
+
 WORKER_SYSTEM = """You are a senior AI engineer and technical writer.
 
 Write ONE section of a HIGH-QUALITY technical blog for developers.
@@ -510,7 +501,6 @@ def worker_node(payload: dict) -> dict:
 
     import time
 
-    # 🔥 RETRY LOGIC INSIDE FUNCTION
     for attempt in range(3):
         try:
             section_md = llm.invoke(
@@ -542,9 +532,9 @@ def worker_node(payload: dict) -> dict:
                 raise e
 
     return {"sections": [(task.id, section_md)]}
-# ------------------------------------------------------------------
+
 # 9) Reducer  
-# ------------------------------------------------------------------
+
 def reducer_node(state: State) -> dict:
     plan = state["plan"]
     if plan is None:
@@ -557,9 +547,8 @@ def reducer_node(state: State) -> dict:
     return {"final": final_md}
 
 
-# ------------------------------------------------------------------
-# 10) Build graph 
-# ------------------------------------------------------------------
+# 10)  graph 
+
 g = StateGraph(State)
 g.add_node("router", router_node)
 g.add_node("research", research_node)
@@ -577,9 +566,9 @@ g.add_edge("reducer", END)
 app = g.compile()
 
 
-# ------------------------------------------------------------------
+
 # 11) Runner
-# ------------------------------------------------------------------
+
 def run(topic: str, as_of: Optional[str] = None):
     if as_of is None:
         as_of = date.today().isoformat()
@@ -615,14 +604,8 @@ def run(topic: str, as_of: Optional[str] = None):
     return out
 
 
-# ===========================================================================
 
-# ===========================================================================
 
-# ---------------------------------------------------------------------------
-# A) Daily topic generator
-#    Always an "open_book" AI weekly-roundup so the router fetches real news.
-# ---------------------------------------------------------------------------
 DAILY_TOPIC_TEMPLATE = (
     "New AI research updates and breakthroughs {as_of}: "
     "new model releases, key papers, industry news, and implications for developers"
@@ -639,15 +622,13 @@ def today_topic(as_of: Optional[str] = None) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# B) Jekyll front-matter injector
-# ---------------------------------------------------------------------------
+#understand working ache se later
 def _slugify(title: str) -> str:
     """Turn a blog title into a URL-safe slug."""
     slug = title.lower()
     slug = re.sub(r"[^\w\s-]", "", slug)
     slug = re.sub(r"[\s_]+", "-", slug).strip("-")
-    return slug[:80]  # keep it reasonable
+    return slug[:80] 
 
 
 def inject_front_matter(markdown: str, plan: Plan, as_of: str, tags: List[str]) -> str:
@@ -663,7 +644,7 @@ def inject_front_matter(markdown: str, plan: Plan, as_of: str, tags: List[str]) 
     lines = markdown.splitlines()
     title = plan.blog_title
 
-    # Strip leading H1 if present (reducer always adds it)
+   
     if lines and lines[0].startswith("# "):
         title = lines[0][2:].strip()
         body = "\n".join(lines[1:]).lstrip("\n")
@@ -706,9 +687,8 @@ def save_post(final_md: str, plan: Plan, as_of: str, repo_dir: Path) -> Path:
     return filepath
 
 
-# ---------------------------------------------------------------------------
-# D) Git commit + push
-# ---------------------------------------------------------------------------
+# Git commit + push
+
 def _run_git(args: List[str], cwd: Path) -> str:
     """Run a git command and return stdout. Raises on non-zero exit."""
     result = subprocess.run(
@@ -733,7 +713,7 @@ def ensure_repo(repo_dir: Path) -> None:
             "GITHUB_REPO_URL=https://github.com/youruser/youruser.github.io"
         )
 
-    # Embed token into URL for auth (HTTPS + PAT)
+    
     auth_url = GITHUB_REPO_URL
     if GITHUB_TOKEN and "github.com" in auth_url:
         auth_url = auth_url.replace(
@@ -776,10 +756,9 @@ def commit_and_push(repo_dir: Path, post_path: Path, as_of: str) -> None:
     log.info(f"✅  Post pushed to GitHub Pages ({GITHUB_BRANCH})")
 
 
-# ---------------------------------------------------------------------------
-# E) Full daily pipeline
-# ---------------------------------------------------------------------------
-REPO_DIR = Path("./gh_pages_repo")  # local clone of the GitHub Pages repo
+#  Full daily pipeline
+
+REPO_DIR = Path("./gh_pages_repo")
 
 
 def daily_pipeline(as_of: Optional[str] = None) -> None:
@@ -796,30 +775,28 @@ def daily_pipeline(as_of: Optional[str] = None) -> None:
 
     log.info(f"=== Daily AI Blog Pipeline — {as_of} ===")
 
-    # Step 1 — sync repo
+   
     ensure_repo(REPO_DIR)
 
-    # Step 2 — build topic
     topic = today_topic(as_of)
     log.info(f"Topic: {topic}")
 
-    # Step 3 — run pipeline (original backend, zero changes)
+    
     out = run(topic=topic, as_of=as_of)
     plan: Plan = out["plan"]
     final_md: str = out["final"]
 
-    # Step 4+5 — save post with front-matter
+    
     post_path = save_post(final_md, plan, as_of, REPO_DIR)
 
-    # Step 6 — commit + push
+    
     commit_and_push(REPO_DIR, post_path, as_of)
 
     log.info(f"=== Pipeline complete for {as_of} ===")
 
 
-# ---------------------------------------------------------------------------
-# F) Scheduler (learn more about it)
-# ---------------------------------------------------------------------------
+# F) Scheduler (learn more about it) or github actions better
+
 def start_scheduler() -> None:
     """Block and run the daily pipeline every day at SCHEDULE_HOUR."""
     try:
@@ -851,16 +828,16 @@ def start_scheduler() -> None:
         log.info("Scheduler stopped.")
 
 
-# ---------------------------------------------------------------------------
-# G) CLI
-# ---------------------------------------------------------------------------
+
+#  CLI
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="AI Research Blog GTM — automated blog pipeline for GitHub Pages"
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    # run once
+   
     run_p = sub.add_parser("run", help="Run the pipeline once (today or a specific date)")
     run_p.add_argument(
         "--date",
@@ -869,10 +846,10 @@ def main() -> None:
         help="As-of date (default: today)",
     )
 
-    # start scheduler
+    
     sub.add_parser("schedule", help="Start the daily cron scheduler")
 
-    # plain LangGraph run (original behaviour, no GitHub publishing)
+   
     dev_p = sub.add_parser("dev", help="Dev mode: run pipeline + save .md locally, no git push")
     dev_p.add_argument("topic", nargs="?", default=None, help="Custom topic (default: AI roundup)")
     dev_p.add_argument("--date", default=None, metavar="YYYY-MM-DD")
